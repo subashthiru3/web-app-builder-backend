@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { deploy } from "../controllers/deploy.controller";
+import { deployController } from "../controllers/deploy.controller";
 
 const router = Router();
 
@@ -38,6 +38,6 @@ const router = Router();
  *       404:
  *         description: No page found
  */
-router.post("/", deploy);
+router.post("/", deployController);
 
 export default router;

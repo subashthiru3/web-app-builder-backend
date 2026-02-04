@@ -1,19 +1,23 @@
 import { Request, Response } from "express";
-import { getLatestPage } from "../services/page.service";
-import { commitPageJson } from "../services/github.service";
+import { deployProject } from "../services/deploy.service";
 
-export const deploy = async (req: Request, res: Response) => {
-  const { projectName } = req.body;
+export async function deployController(req: Request, res: Response) {
+  try {
+    const { projectName, pageJson } = req.body;
 
-  const pageJson = await getLatestPage(projectName);
-  if (!pageJson) {
-    return res.status(404).json({ message: "No page found to deploy" });
+    if (!projectName || !pageJson) {
+      return res.status(400).json({
+        message: "projectName and pageJson required",
+      });
+    }
+
+    const result = await deployProject(projectName, pageJson);
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Deploy failed",
+    });
   }
-
-  await commitPageJson(pageJson);
-
-  res.json({
-    status: "DEPLOY_TRIGGERED",
-    liveUrl: process.env.AZURE_STATIC_WEB_APP_URL,
-  });
-};
+}
