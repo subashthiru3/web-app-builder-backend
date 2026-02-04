@@ -15,7 +15,11 @@ app.use("/api/pages", pageRoutes);
 app.use("/api/deploy", deployRoutes);
 
 // 🔥 Swagger UI
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, { explorer: true }),
+);
 
 app.get("/health", (_, res) => res.send("OK"));
 
