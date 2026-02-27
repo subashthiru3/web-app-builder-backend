@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import sodium from "libsodium-wrappers";
+import { v4 as uuidv4 } from "uuid";
+import { createDeployment } from "../services/deployment.service";
+import { getLatestWorkflowRun } from "../services/github.service";
 
 const TENANT_ID = process.env.AZURE_TENANT_ID!;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID!;
@@ -97,12 +100,11 @@ export async function createStaticWebApp(req: Request, res: Response) {
 
   try {
     const token = await getAzureToken();
-    const sanitizedAppName = appName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 
-    const staticWebAppName = `${sanitizedAppName}-${Date.now()}`;
+    const staticWebAppName = appName;
 
     // 1️⃣ Create Static Web App
-    const createUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${resourceGroup}/providers/Microsoft.Web/staticSites/${appName}?api-version=2022-03-01`;
+    const createUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${resourceGroup}/providers/Microsoft.Web/staticSites/${staticWebAppName}?api-version=2022-03-01`;
 
     await axios.put(
       createUrl,
@@ -127,7 +129,7 @@ export async function createStaticWebApp(req: Request, res: Response) {
     );
 
     // 2️⃣ Get Deployment Token
-    const secretsUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${resourceGroup}/providers/Microsoft.Web/staticSites/${appName}/listSecrets?api-version=2022-03-01`;
+    const secretsUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${resourceGroup}/providers/Microsoft.Web/staticSites/${staticWebAppName}/listSecrets?api-version=2022-03-01`;
 
     const { data: secretsData } = await axios.post(
       secretsUrl,
@@ -150,8 +152,26 @@ export async function createStaticWebApp(req: Request, res: Response) {
     // 4️⃣ Trigger Workflow
     await triggerWorkflow(staticWebAppName, secretName);
 
+    // Wait 5 seconds so GitHub registers workflow
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // Get latest workflow run
+    const run = await getLatestWorkflowRun();
+
+    if (!run?.id) {
+      return res.status(500).json({
+        error: "Failed to fetch workflow run",
+      });
+    }
+
+    const deploymentId = uuidv4();
+
+    // Save in DB
+    await createDeployment(deploymentId, staticWebAppName, run.id.toString());
+
     res.status(200).json({
-      message: "Static Web App created and deployment triggered 🚀",
+      message: "Deployment started 🚀",
+      deploymentId,
     });
   } catch (error: any) {
     console.error(error.response?.data || error.message);

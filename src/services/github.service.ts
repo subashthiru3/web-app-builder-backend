@@ -4,6 +4,7 @@ const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
 const branch = process.env.GITHUB_BRANCH || "main";
 const token = process.env.GITHUB_TOKEN!;
+const workflowId = process.env.GITHUB_WORKFLOW!;
 
 export const commitPageJson = async (projectName: string, pageJson: any) => {
   const filePath = `runtime/${projectName}/page.json`;
@@ -48,3 +49,17 @@ export const commitPageJson = async (projectName: string, pageJson: any) => {
     },
   );
 };
+
+export async function getLatestWorkflowRun() {
+  const { data } = await axios.get(
+    `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowId}/runs?per_page=1`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+      },
+    },
+  );
+
+  return data.workflow_runs[0];
+}
