@@ -17,9 +17,11 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "libsodium-wrappers": "^0.8.2",
     "mysql2": "^3.16.2",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
