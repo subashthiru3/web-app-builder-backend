@@ -50,9 +50,11 @@ export const commitPageJson = async (projectName: string, pageJson: any) => {
   );
 };
 
-export async function getLatestWorkflowRun() {
+export async function getLatestWorkflowRun(
+  targetWorkflowId: string = workflowId,
+) {
   const { data } = await axios.get(
-    `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowId}/runs?per_page=1`,
+    `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${targetWorkflowId}/runs?per_page=1`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -62,4 +64,64 @@ export async function getLatestWorkflowRun() {
   );
 
   return data.workflow_runs[0];
+}
+
+type WaitForWorkflowRunOptions = {
+  targetWorkflowId: string;
+  branch: string;
+  previousRunId?: number;
+  dispatchedAt: Date;
+  attempts?: number;
+  intervalMs?: number;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function waitForWorkflowRun(options: WaitForWorkflowRunOptions) {
+  const {
+    targetWorkflowId,
+    branch,
+    previousRunId,
+    dispatchedAt,
+    attempts = 12,
+    intervalMs = 2000,
+  } = options;
+
+  const dispatchTimeMs = dispatchedAt.getTime() - 2000;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const { data } = await axios.get(
+      `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${targetWorkflowId}/runs?per_page=20`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    const matchingRun = (data.workflow_runs || []).find((run: any) => {
+      if (run.id === previousRunId) {
+        return false;
+      }
+
+      const createdAtMs = new Date(run.created_at).getTime();
+
+      return (
+        run.event === "workflow_dispatch" &&
+        run.head_branch === branch &&
+        createdAtMs >= dispatchTimeMs
+      );
+    });
+
+    if (matchingRun) {
+      return matchingRun;
+    }
+
+    await sleep(intervalMs);
+  }
+
+  return null;
 }
