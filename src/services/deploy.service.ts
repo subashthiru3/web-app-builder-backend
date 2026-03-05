@@ -2,9 +2,13 @@ import { commitPageJson } from "./github.service";
 import { triggerDeployWorkflow } from "./github.workflow";
 import { savePage } from "./page.service";
 
-export async function deployProject(projectName: string, pageJson: any) {
+export async function deployProject(
+  projectName: string,
+  pageJson: any,
+  projectDescription?: string,
+) {
   // 1️⃣ Save to DB
-  await savePage(projectName, pageJson);
+  await savePage(projectName, projectDescription, pageJson);
 
   // 2️⃣ Commit JSON to GitHub repo
   await commitPageJson(projectName, pageJson);
