@@ -2,9 +2,9 @@ import { Request, Response } from "express";
 import * as pageService from "../services/page.service";
 
 export const savePage = async (req: Request, res: Response) => {
-  const { projectName, pageJson } = req.body;
+  const { projectName, pageJson, projectDescription } = req.body;
 
-  await pageService.savePage(projectName, pageJson);
+  await pageService.savePage(projectName, pageJson, projectDescription);
   res.json({ message: "Page saved successfully" });
 };
 

@@ -3,12 +3,18 @@ import pool from "../config/db";
 export const savePage = async (
   projectName: string,
   pageJson: unknown,
+  projectDescription?: string,
 ): Promise<void> => {
   await pool.execute(
-    `INSERT INTO pages (project_name, page_json)
-     VALUES (?, ?)
+    `INSERT INTO pages (project_name, project_description, page_json)
+     VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE page_json = ?`,
-    [projectName, JSON.stringify(pageJson), JSON.stringify(pageJson)],
+    [
+      projectName,
+      projectDescription,
+      JSON.stringify(pageJson),
+      JSON.stringify(pageJson),
+    ],
   );
 };
 
