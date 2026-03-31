@@ -6,9 +6,10 @@ export async function deployProject(
   projectName: string,
   pageJson: any,
   projectDescription?: string,
+  stage: string = "prod",
 ) {
   // 1️⃣ Save to DB
-  await savePage(projectName, projectDescription, pageJson);
+  await savePage(projectName, pageJson, projectDescription, stage);
 
   // 2️⃣ Commit JSON to GitHub repo
   await commitPageJson(projectName, pageJson);

@@ -7,6 +7,7 @@ import {
   getLatestWorkflowRun,
   waitForWorkflowRun,
 } from "../services/github.service";
+import { createStaticWebAppInternal } from "../services/azure.staticwebapp.service";
 
 const TENANT_ID = process.env.AZURE_TENANT_ID!;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID!;
@@ -76,75 +77,18 @@ function normalizeStage(value: unknown): DeploymentStage | null {
     : null;
 }
 
-function parseStageDeployMap(): Record<string, StageDeployTarget> {
-  if (!STAGE_DEPLOY_MAP) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(STAGE_DEPLOY_MAP);
-
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    const normalizedMap: Record<string, StageDeployTarget> = {};
-
-    Object.entries(parsed).forEach(([key, value]) => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return;
-      }
-
-      const val = value as Record<string, unknown>;
-
-      if (typeof val.appName !== "string" || !val.appName.trim()) {
-        return;
-      }
-
-      normalizedMap[key.toLowerCase()] = {
-        appName: val.appName.trim(),
-        resourceGroup:
-          typeof val.resourceGroup === "string" ? val.resourceGroup : undefined,
-        branch: typeof val.branch === "string" ? val.branch : undefined,
-        workflowId:
-          typeof val.workflowId === "string" ? val.workflowId : undefined,
-        url: typeof val.url === "string" ? val.url : undefined,
-      };
-    });
-
-    return normalizedMap;
-  } catch {
-    return {};
-  }
-}
-
-function getStageConfigFromEnv(
-  stage: DeploymentStage,
-): StageDeployTarget | null {
-  const upper = stage.toUpperCase();
-  const appName = process.env[`AZURE_${upper}_APP_NAME`];
-
-  if (!appName) {
-    return null;
+function resolveStageApp(projectName: string, stage?: string) {
+  if (!stage || stage === "prod") {
+    return {
+      appName: projectName,
+      branch: "main",
+    };
   }
 
   return {
-    appName,
-    resourceGroup: process.env[`AZURE_${upper}_RESOURCE_GROUP`],
-    branch: process.env[`AZURE_${upper}_BRANCH`],
-    workflowId: process.env[`AZURE_${upper}_WORKFLOW_ID`],
-    url: process.env[`AZURE_${upper}_URL`],
+    appName: `${projectName}-${stage}`,
+    branch: stage,
   };
-}
-
-function resolveStageTarget(stage: DeploymentStage): StageDeployTarget | null {
-  const mapTarget = parseStageDeployMap()[stage];
-
-  if (mapTarget) {
-    return mapTarget;
-  }
-
-  return getStageConfigFromEnv(stage);
 }
 
 async function getAzureToken() {
@@ -250,14 +194,7 @@ export async function createStaticWebApp(req: Request, res: Response) {
       {
         location: location || "centralus",
         sku: { name: sku || "Free" },
-        properties: {
-          // repositoryUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`,
-          // branch: "main",
-          // buildProperties: {
-          //   appLocation: "/",
-          //   outputLocation: "out",
-          // },
-        },
+        properties: {},
       },
       {
         headers: {
@@ -344,10 +281,8 @@ export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
 
   try {
     const token = await getAzureToken();
-    const stageTarget = normalizedStage
-      ? resolveStageTarget(normalizedStage)
-      : null;
-    const resolvedAppName = stageTarget?.appName || appName;
+    const { appName: resolvedAppName, branch: resolvedBranch } =
+      resolveStageApp(appName, normalizedStage || "prod");
 
     if (!resolvedAppName) {
       return res.status(400).json({
@@ -356,20 +291,31 @@ export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
       });
     }
 
-    const selectedWorkflowId =
-      stageTarget?.workflowId || resolveWorkflowIdByAppName(resolvedAppName);
+    const selectedWorkflowId = resolveWorkflowIdByAppName(resolvedAppName);
 
-    const selectedBranch = stageTarget?.branch || branch || GITHUB_BRANCH;
-    const resolvedResourceGroup =
-      stageTarget?.resourceGroup ||
-      resourceGroup ||
-      (await getStaticWebAppResourceGroup(resolvedAppName, token));
+    const selectedBranch = resolvedBranch || branch || GITHUB_BRANCH;
+    let resolvedResourceGroup = await getStaticWebAppResourceGroup(
+      resolvedAppName,
+      token,
+    );
 
+    // 🔥 AUTO CREATE IF NOT EXISTS
     if (!resolvedResourceGroup) {
-      return res.status(404).json({
-        error:
-          "Static Web App not found. Pass resourceGroup explicitly or verify appName.",
-      });
+      if (!resourceGroup) {
+        return res.status(400).json({
+          error:
+            "resourceGroup is required for first-time deployment of this stage",
+        });
+      }
+
+      console.log(`⚡ Auto-creating Static Web App: ${resolvedAppName}`);
+
+      await createStaticWebAppInternal(resolvedAppName, resourceGroup, token);
+
+      resolvedResourceGroup = resourceGroup;
+
+      // ⏳ Wait for Azure to initialize
+      await new Promise((res) => setTimeout(res, 5000));
     }
 
     // 2️⃣ Get Deployment Token
@@ -421,10 +367,14 @@ export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
     const deploymentId = uuidv4();
 
     // Save in DB
-    await createDeployment(deploymentId, resolvedAppName, run.id.toString());
-
+    await createDeployment({
+      id: deploymentId,
+      projectName: appName,
+      stage: normalizedStage || "prod",
+      staticAppName: resolvedAppName,
+      workflowRunId: run.id.toString(),
+    });
     const azureStaticUrl =
-      stageTarget?.url ||
       (await getAzureStaticUrlByAppName(resolvedAppName, token)) ||
       `https://${resolvedAppName}.azurestaticapps.net`;
 
