@@ -50,7 +50,7 @@ const router = Router();
  *                   type: string
  * /api/azure/staticwebapp/deploy:
  *   post:
- *     summary: Trigger Static Web App deployment workflow and get polling ID
+ *     summary: Trigger Static Web App deployment workflow by stage and get URL
  *     tags:
  *       - Azure Static Web App
  *     requestBody:
@@ -59,13 +59,16 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - appName
  *             properties:
+ *               stage:
+ *                 type: string
+ *                 enum: [dev, test, uat, prod]
+ *                 example: dev
+ *                 description: Preferred deployment selector from UI dropdown
  *               appName:
  *                 type: string
  *                 example: my-static-app
- *                 description: Used to resolve workflow from server-side map
+ *                 description: Optional fallback when stage mapping is not configured
  *               resourceGroup:
  *                 type: string
  *                 example: my-resource-group
@@ -84,6 +87,16 @@ const router = Router();
  *                   type: string
  *                 deploymentId:
  *                   type: string
+ *                 stage:
+ *                   type: string
+ *                   nullable: true
+ *                   example: dev
+ *                 appName:
+ *                   type: string
+ *                   example: my-static-app-dev
+ *                 azureStaticUrl:
+ *                   type: string
+ *                   example: https://my-static-app-dev.azurestaticapps.net
  *                 pollStatusPath:
  *                   type: string
  *       400:
