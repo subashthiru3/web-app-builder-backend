@@ -15,25 +15,30 @@ export const savePage = async (req: Request, res: Response) => {
 };
 
 export const getLatestPage = async (req: Request, res: Response) => {
-  const { projectName } = req.params;
-  const { stage } = req.query;
+  const { project, stage } = req.query;
 
-  const projectNameStr = Array.isArray(projectName)
-    ? projectName[0]
-    : projectName;
+  if (!project || !stage) {
+    return res.status(400).json({
+      error: "project and stage are required",
+    });
+  }
 
   const page = await pageService.getLatestPage(
-    projectNameStr,
-    (stage as string) || "prod",
+    project as string,
+    stage as string,
   );
+
+  if (!page) {
+    return res.status(404).json({ error: "No page found" });
+  }
 
   if (typeof page === "string") {
     try {
-      res.json(JSON.parse(page));
+      return res.json(JSON.parse(page));
     } catch {
-      res.status(500).json({ error: "Failed to parse page JSON" });
+      return res.status(500).json({ error: "Invalid JSON format" });
     }
-  } else {
-    res.json(page);
   }
+
+  res.json(page);
 };

@@ -26,5 +26,14 @@ export async function createStaticWebAppInternal(
     },
   );
 
-  return data;
+  const staticUrl = data.properties?.defaultHostname
+    ? `https://${data.properties.defaultHostname}`
+    : null;
+
+  return {
+    message: "Static Web App created successfully",
+    appName,
+    resourceGroup,
+    staticUrl,
+  };
 }

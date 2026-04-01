@@ -50,6 +50,6 @@ router.post("/save", savePage);
  *       404:
  *         description: Page not found
  */
-router.get("/:projectName", getLatestPage);
+router.get("/", getLatestPage);
 
 export default router;
