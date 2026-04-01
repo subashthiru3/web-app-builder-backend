@@ -23,11 +23,20 @@ const router = express.Router();
  *                 conclusion:
  *                   type: string
  *                   example: success
+ *                   nullable: true
  *                 html_url:
  *                   type: string
  *                   example: https://github.com/run/123
  *       500:
  *         description: Failed to fetch deploy status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Failed to fetch deploy status
  */
 router.get("/", deployStatusController);
 

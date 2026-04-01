@@ -26,30 +26,86 @@ const router = Router();
  *                 type: object
  *                 example:
  *                   components: []
+ *               projectDescription:
+ *                 type: string
+ *                 example: Marketing landing page
+ *               stage:
+ *                 type: string
+ *                 enum: [dev, test, uat, prod]
+ *                 example: prod
  *     responses:
  *       200:
  *         description: Page saved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Page saved successfully
  */
 router.post("/save", savePage);
 
 /**
  * @swagger
- * /api/pages/{projectName}:
+ * /api/pages:
  *   get:
  *     summary: Get latest page JSON
  *     tags: [Pages]
  *     parameters:
- *       - in: path
- *         name: projectName
+ *       - in: query
+ *         name: project
  *         required: true
  *         schema:
  *           type: string
+ *         example: my-project
+ *       - in: query
+ *         name: stage
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [dev, test, uat, prod]
+ *         example: prod
  *     responses:
  *       200:
  *         description: Latest page JSON
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               additionalProperties: true
+ *       400:
+ *         description: project and stage are required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: project and stage are required
  *       404:
  *         description: Page not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: No page found
+ *       500:
+ *         description: Invalid JSON format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Invalid JSON format
  */
-router.get("/:projectName", getLatestPage);
+router.get("/", getLatestPage);
 
 export default router;

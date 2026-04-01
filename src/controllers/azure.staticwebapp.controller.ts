@@ -7,6 +7,7 @@ import {
   getLatestWorkflowRun,
   waitForWorkflowRun,
 } from "../services/github.service";
+import { createStaticWebAppInternal } from "../services/azure.staticwebapp.service";
 
 const TENANT_ID = process.env.AZURE_TENANT_ID!;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID!;
@@ -18,6 +19,20 @@ const GITHUB_OWNER = process.env.GITHUB_OWNER!;
 const GITHUB_REPO = process.env.GITHUB_REPO!;
 const GITHUB_WORKFLOW_ID = process.env.GITHUB_WORKFLOW!;
 const GITHUB_WORKFLOW_MAP = process.env.GITHUB_WORKFLOW_MAP;
+const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
+const STAGE_DEPLOY_MAP = process.env.AZURE_STAGE_DEPLOY_MAP;
+
+type DeploymentStage = "dev" | "test" | "uat" | "prod";
+
+type StageDeployTarget = {
+  appName: string;
+  resourceGroup?: string;
+  branch?: string;
+  workflowId?: string;
+  url?: string;
+};
+
+const SUPPORTED_STAGES: DeploymentStage[] = ["dev", "test", "uat", "prod"];
 
 function parseWorkflowMap(): Record<string, string> {
   if (!GITHUB_WORKFLOW_MAP) {
@@ -48,6 +63,32 @@ function parseWorkflowMap(): Record<string, string> {
 function resolveWorkflowIdByAppName(appName: string): string {
   const workflowMap = parseWorkflowMap();
   return workflowMap[appName] || GITHUB_WORKFLOW_ID;
+}
+
+function normalizeStage(value: unknown): DeploymentStage | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return SUPPORTED_STAGES.includes(normalized as DeploymentStage)
+    ? (normalized as DeploymentStage)
+    : null;
+}
+
+function resolveStageApp(projectName: string, stage?: string) {
+  if (!stage || stage === "prod") {
+    return {
+      appName: projectName,
+      branch: "main",
+    };
+  }
+
+  return {
+    appName: `${projectName}-${stage}`,
+    branch: stage,
+  };
 }
 
 async function getAzureToken() {
@@ -116,6 +157,7 @@ async function triggerWorkflow(
   secretName: string,
   workflowId: string,
   branch: string,
+  stage: string,
 ) {
   await axios.post(
     `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/${workflowId}/dispatches`,
@@ -124,6 +166,7 @@ async function triggerWorkflow(
       inputs: {
         project: staticWebAppName,
         token_name: secretName,
+        stage: stage || "prod",
       },
     },
     {
@@ -151,14 +194,7 @@ export async function createStaticWebApp(req: Request, res: Response) {
       {
         location: location || "centralus",
         sku: { name: sku || "Free" },
-        properties: {
-          // repositoryUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`,
-          // branch: "main",
-          // buildProperties: {
-          //   appLocation: "/",
-          //   outputLocation: "out",
-          // },
-        },
+        properties: {},
       },
       {
         headers: {
@@ -214,30 +250,76 @@ async function getStaticWebAppResourceGroup(
   return idParts[rgIndex + 1];
 }
 
-export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
-  const { appName, resourceGroup, branch } = req.body;
+async function getAzureStaticUrlByAppName(
+  appName: string,
+  token: string,
+): Promise<string | null> {
+  const listUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.Web/staticSites?api-version=2022-03-01`;
 
-  if (!appName) {
-    return res.status(400).json({ error: "appName is required" });
+  const { data } = await axios.get(listUrl, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const site = data?.value?.find((item: any) => item?.name === appName);
+  const hostname = site?.properties?.defaultHostname;
+
+  return hostname ? `https://${hostname}` : null;
+}
+
+export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
+  const { appName, resourceGroup, branch, stage } = req.body;
+
+  const normalizedStage = stage ? normalizeStage(stage) : null;
+
+  if (stage && !normalizedStage) {
+    return res.status(400).json({
+      error: `Invalid stage. Supported values: ${SUPPORTED_STAGES.join(", ")}`,
+    });
   }
 
   try {
     const token = await getAzureToken();
-    const selectedWorkflowId = resolveWorkflowIdByAppName(appName);
+    const { appName: resolvedAppName, branch: resolvedBranch } =
+      resolveStageApp(appName, normalizedStage || "prod");
 
-    const selectedBranch = branch || process.env.GITHUB_BRANCH || "main";
-    const resolvedResourceGroup =
-      resourceGroup || (await getStaticWebAppResourceGroup(appName, token));
-
-    if (!resolvedResourceGroup) {
-      return res.status(404).json({
+    if (!resolvedAppName) {
+      return res.status(400).json({
         error:
-          "Static Web App not found. Pass resourceGroup explicitly or verify appName.",
+          "appName is required when stage mapping is not configured. Provide appName or configure stage settings.",
       });
     }
 
+    const selectedWorkflowId = resolveWorkflowIdByAppName(resolvedAppName);
+
+    const selectedBranch = resolvedBranch || branch || GITHUB_BRANCH;
+    let resolvedResourceGroup = await getStaticWebAppResourceGroup(
+      resolvedAppName,
+      token,
+    );
+
+    // 🔥 AUTO CREATE IF NOT EXISTS
+    if (!resolvedResourceGroup) {
+      if (!resourceGroup) {
+        return res.status(400).json({
+          error:
+            "resourceGroup is required for first-time deployment of this stage",
+        });
+      }
+
+      console.log(`⚡ Auto-creating Static Web App: ${resolvedAppName}`);
+
+      await createStaticWebAppInternal(resolvedAppName, resourceGroup, token);
+
+      resolvedResourceGroup = resourceGroup;
+
+      // ⏳ Wait for Azure to initialize
+      await new Promise((res) => setTimeout(res, 5000));
+    }
+
     // 2️⃣ Get Deployment Token
-    const secretsUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${resolvedResourceGroup}/providers/Microsoft.Web/staticSites/${appName}/listSecrets?api-version=2022-03-01`;
+    const secretsUrl = `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${resolvedResourceGroup}/providers/Microsoft.Web/staticSites/${resolvedAppName}/listSecrets?api-version=2022-03-01`;
 
     const { data: secretsData } = await axios.post(
       secretsUrl,
@@ -250,7 +332,9 @@ export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
     );
 
     const deploymentToken = secretsData.properties.apiKey;
-    const secretName = `SWA_TOKEN_${appName}`.toUpperCase().replace(/-/g, "_");
+    const secretName = `SWA_TOKEN_${resolvedAppName}`
+      .toUpperCase()
+      .replace(/-/g, "_");
 
     // 3️⃣ Update GitHub Secret
     await createGitHubSecret(secretName, deploymentToken);
@@ -260,10 +344,11 @@ export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
     const dispatchedAt = new Date();
 
     await triggerWorkflow(
-      appName,
+      resolvedAppName,
       secretName,
       selectedWorkflowId,
       selectedBranch,
+      normalizedStage || "prod",
     );
 
     const run = await waitForWorkflowRun({
@@ -282,12 +367,24 @@ export async function triggerStaticWebAppDeploy(req: Request, res: Response) {
     const deploymentId = uuidv4();
 
     // Save in DB
-    await createDeployment(deploymentId, appName, run.id.toString());
+    await createDeployment({
+      id: deploymentId,
+      projectName: appName,
+      stage: normalizedStage || "prod",
+      staticAppName: resolvedAppName,
+      workflowRunId: run.id.toString(),
+    });
+    const azureStaticUrl =
+      (await getAzureStaticUrlByAppName(resolvedAppName, token)) ||
+      `https://${resolvedAppName}.azurestaticapps.net`;
 
     return res.status(200).json({
       message: "Deployment started 🚀",
       deploymentId,
-      // pollStatusPath: `/api/azure/deployments/${deploymentId}/status`,
+      stage: normalizedStage,
+      appName: resolvedAppName,
+      azureStaticUrl,
+      pollStatusPath: `/api/azure/deployments/${deploymentId}/status`,
     });
   } catch (error: any) {
     console.error(error.response?.data || error.message);

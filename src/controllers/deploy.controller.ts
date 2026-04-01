@@ -3,7 +3,7 @@ import { deployProject } from "../services/deploy.service";
 
 export async function deployController(req: Request, res: Response) {
   try {
-    const { projectName, pageJson } = req.body;
+    const { projectName, pageJson, stage, projectDescription } = req.body;
 
     if (!projectName || !pageJson) {
       return res.status(400).json({
@@ -11,7 +11,12 @@ export async function deployController(req: Request, res: Response) {
       });
     }
 
-    const result = await deployProject(projectName, pageJson);
+    const result = await deployProject(
+      projectName,
+      pageJson,
+      projectDescription,
+      stage,
+    );
 
     res.json(result);
   } catch (error) {
