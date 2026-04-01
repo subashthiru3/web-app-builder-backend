@@ -39,6 +39,20 @@ const router = Router();
  *           application/json:
  *             schema:
  *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Static Web App created successfully
+ *                 appName:
+ *                   type: string
+ *                   example: my-static-app
+ *                 resourceGroup:
+ *                   type: string
+ *                   example: my-resource-group
+ *                 staticUrl:
+ *                   type: string
+ *                   nullable: true
+ *                   example: https://my-static-app.azurestaticapps.net
  *       500:
  *         description: Error creating Azure Static Web App
  *         content:
@@ -64,11 +78,10 @@ const router = Router();
  *                 type: string
  *                 enum: [dev, test, uat, prod]
  *                 example: dev
- *                 description: Preferred deployment selector from UI dropdown
  *               appName:
  *                 type: string
  *                 example: my-static-app
- *                 description: Optional fallback when stage mapping is not configured
+ *                 description: Base app name used to resolve the stage-specific app name
  *               resourceGroup:
  *                 type: string
  *                 example: my-resource-group
@@ -90,21 +103,38 @@ const router = Router();
  *                 stage:
  *                   type: string
  *                   nullable: true
- *                   example: dev
+ *                   example: prod
  *                 appName:
  *                   type: string
- *                   example: my-static-app-dev
+ *                   example: my-static-app
  *                 azureStaticUrl:
  *                   type: string
- *                   example: https://my-static-app-dev.azurestaticapps.net
+ *                   example: https://my-static-app.azurestaticapps.net
  *                 pollStatusPath:
  *                   type: string
+ *                   example: /api/azure/deployments/123e4567-e89b-12d3-a456-426614174000/status
  *       400:
  *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid stage. Supported values: dev, test, uat, prod"
  *       404:
  *         description: Static Web App not found
  *       500:
  *         description: Error triggering deployment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Workflow triggered, but failed to identify workflow run
  */
 router.post("/", createStaticWebApp);
 router.post("/deploy", triggerStaticWebAppDeploy);

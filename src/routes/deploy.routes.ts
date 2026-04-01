@@ -17,10 +17,22 @@ const router = Router();
  *             type: object
  *             required:
  *               - projectName
+ *               - pageJson
  *             properties:
  *               projectName:
  *                 type: string
  *                 example: my-project
+ *               pageJson:
+ *                 type: object
+ *                 example:
+ *                   components: []
+ *               projectDescription:
+ *                 type: string
+ *                 example: Landing page for product launch
+ *               stage:
+ *                 type: string
+ *                 enum: [dev, test, uat, prod]
+ *                 example: prod
  *     responses:
  *       200:
  *         description: Deployment triggered
@@ -31,12 +43,30 @@ const router = Router();
  *               properties:
  *                 status:
  *                   type: string
- *                   example: DEPLOY_TRIGGERED
- *                 liveUrl:
+ *                   example: deploy-triggered
+ *                 project:
  *                   type: string
- *                   example: https://app.azurestaticapps.net
- *       404:
- *         description: No page found
+ *                   example: my-project
+ *       400:
+ *         description: projectName and pageJson required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: projectName and pageJson required
+ *       500:
+ *         description: Deploy failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Deploy failed
  */
 router.post("/", deployController);
 

@@ -30,6 +30,9 @@ const router = Router();
  *                   type: string
  *                   enum: [IN_PROGRESS, SUCCESS, FAILED]
  *                   example: IN_PROGRESS
+ *                 azureStaticUrl:
+ *                   type: string
+ *                   example: https://my-static-app.azurestaticapps.net
  *       404:
  *         description: Deployment not found
  *         content:
